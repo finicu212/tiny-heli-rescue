@@ -5,7 +5,7 @@
 
 import { Heli } from '../sim/heli.js';
 import { World } from '../world/world.js';
-import { View } from '../render/view.js';
+import { View, CE } from '../render/view.js';
 import { TerrainCache } from '../render/terrain.js';
 import { HeliRenderer } from '../render/heli.js';
 import { FX } from '../render/fx.js';
@@ -191,19 +191,25 @@ export class Game {
     this.view.shakeY = (Math.random() - 0.5) * amp;
     this.input.setRumble(t.vrs * 0.7 + this.shake * 0.8, 0.04 + etlShudder + Math.min(0.3, Math.abs(t.cts) * 1.5) * t.nr);
 
-    // ── camera (velocity lead, smoothed) ──
+    // ── camera: follow with velocity lead; zoom out as needed to keep heli + shadow framed ──
+    const v = this.view;
+    const zg = this.world.surfaceZ(h.pos[0], h.pos[1]);
+    const agl = Math.max(0, h.pos[2] - zg);
+    const fitS = (0.34 * v.H) / (Math.max(1, agl) * CE);
+    const targetS = Math.max(2.4 * v.dpr, Math.min(v.userS, fitS));
+    if (!this.liveS) this.liveS = targetS;
+    this.liveS += (targetS - this.liveS) * (1 - Math.exp(-dt * 2.2));
+    v.S = this.liveS;
+    const leadMax = (0.22 * v.W) / v.S;
     const lead = 0.7;
-    const tx = h.pos[0] + Math.max(-40, Math.min(40, h.vel[0] * lead));
-    const ty = h.pos[1] + Math.max(-40, Math.min(40, h.vel[1] * lead));
-    const tz = h.pos[2];
+    const tx = h.pos[0] + Math.max(-leadMax, Math.min(leadMax, h.vel[0] * lead));
+    const ty = h.pos[1] + Math.max(-leadMax, Math.min(leadMax, h.vel[1] * lead));
+    const tz = h.pos[2] - 0.5 * agl;              // midway between heli and its shadow
     const k = 1 - Math.exp(-dt * 5);
     this.cam[0] += (tx - this.cam[0]) * k;
     this.cam[1] += (ty - this.cam[1]) * k;
     this.cam[2] += (tz - this.cam[2]) * k;
-    this.view.lookAt(this.cam[0], this.cam[1], this.cam[2]);
-    const S = this.view.S;
-    this.view.camR = Math.round(this.view.camR * S) / S;
-    this.view.camU = Math.round(this.view.camU * S) / S;
+    v.lookAt(this.cam[0], this.cam[1], this.cam[2]);
 
     // ── render ──
     const tr = performance.now();
@@ -230,17 +236,32 @@ export class Game {
     this.fx.drawGround(ctx);
     const zg = this.world.surfaceZ(h.pos[0], h.pos[1]);
     this.heliR.drawShadow(ctx, h, zg);
-    // Drop line: altitude cue from heli to its shadow
+    // Drop line + AGL tag: the altitude cue from heli to its shadow
     const agl = h.pos[2] - zg;
-    if (agl > 3) {
-      ctx.strokeStyle = 'rgba(255,255,255,0.18)';
-      ctx.setLineDash([4, 6]);
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(v.sx(h.pos[0], h.pos[1]), v.sy(h.pos[0], h.pos[1], h.pos[2] - 1.2));
-      ctx.lineTo(v.sx(h.pos[0], h.pos[1]), v.sy(h.pos[0], h.pos[1], zg));
-      ctx.stroke();
+    if (agl > 2.5) {
+      const x = v.sx(h.pos[0], h.pos[1]);
+      const y0 = v.sy(h.pos[0], h.pos[1], h.pos[2] - 1.25), y1 = v.sy(h.pos[0], h.pos[1], zg);
+      ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+      ctx.setLineDash([5 * v.dpr, 5 * v.dpr]);
+      ctx.lineWidth = v.dpr;
+      ctx.beginPath(); ctx.moveTo(x, y0); ctx.lineTo(x, y1); ctx.stroke();
       ctx.setLineDash([]);
+      // 10 m ticks
+      ctx.beginPath();
+      for (let m = 10; m < agl - 1.25; m += 10) {
+        const yy = v.sy(h.pos[0], h.pos[1], zg + m);
+        ctx.moveTo(x - 4 * v.dpr, yy); ctx.lineTo(x + 4 * v.dpr, yy);
+      }
+      ctx.stroke();
+      ctx.font = `${12 * v.dpr}px "Share Tech Mono", monospace`;
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = 'rgba(0,0,0,0.45)';
+      const label = `${Math.round((agl - 1.25) * 3.28084)} ft`;
+      const ym = (y0 + y1) / 2;
+      ctx.fillRect(x + 8 * v.dpr, ym - 9 * v.dpr, ctx.measureText(label).width + 8 * v.dpr, 18 * v.dpr);
+      ctx.fillStyle = '#fff';
+      ctx.fillText(label, x + 12 * v.dpr, ym);
     }
     this.heliR.draw(ctx, h);
     this.fx.drawRings(ctx);

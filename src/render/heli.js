@@ -161,7 +161,8 @@ export class HeliRenderer {
     const v = this.view, R = h.R, p = h.pos;
     const agl = Math.max(0, p[2] - zg);
     const a = Math.max(0.06, 0.34 - agl * 0.004);
-    const lx = -LIGHT[0] / LIGHT[2], ly = -LIGHT[1] / LIGHT[2];
+    // Near-vertical shadow so it sits under the drop line and reads as altitude
+    const lx = (-LIGHT[0] / LIGHT[2]) * 0.2, ly = (-LIGHT[1] / LIGHT[2]) * 0.2;
     const proj = (bx, by, bz) => {
       const x = p[0] + R[0] * bx + R[1] * by + R[2] * bz;
       const y = p[1] + R[3] * bx + R[4] * by + R[5] * bz;

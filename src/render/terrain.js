@@ -13,7 +13,11 @@ import { mulberry32 } from '../world/noise.js';
 const C = 64;
 const CELL = 2;
 const N = C / CELL;
-const MAX_CHUNKS = 64;
+const MAX_CHUNKS = 90;
+// Cache scales are quantised; the view scale in between is reached by GPU-scaled blits
+const LEVEL_STEP = 1.25;
+export function levelFor(S) { return Math.round(Math.log(S) / Math.log(LEVEL_STEP)); }
+function scaleFor(L) { return Math.pow(LEVEL_STEP, L); }
 const MAX_DECALS = 1800;
 
 // Light from screen upper-left
@@ -59,7 +63,8 @@ export class TerrainCache {
     this.view = view;
     this.chunks = new Map();
     this.decals = [];
-    this.S = view.S;
+    this.L = levelFor(view.S);
+    this.S = scaleFor(this.L);
     this.frame = 0;
     this.visible = [];
     this.pending = 0;
@@ -69,15 +74,26 @@ export class TerrainCache {
 
   invalidate() {
     this.chunks.clear();
-    this.S = this.view.S;
   }
 
-  key(i, j) { return ((i + 512) << 10) | (j + 512); }
+  key(i, j, L = this.L) { return (((L + 64) * 1024 + (i + 512)) * 1024) + (j + 512); }
+
+  /** Chunk at the current level, else the nearest cached level as a stand-in. */
+  _best(i, j) {
+    let ch = this.chunks.get(this.key(i, j));
+    if (ch) return ch;
+    for (let d = 1; d <= 4; d++) {
+      ch = this.chunks.get(this.key(i, j, this.L - d)) || this.chunks.get(this.key(i, j, this.L + d));
+      if (ch) return ch;
+    }
+    return null;
+  }
 
   /** Visible chunks this frame; generates missing ones within a time budget. */
   update(budgetMs = 3) {
     const v = this.view;
-    if (v.S !== this.S) this.invalidate();
+    const L = levelFor(v.S);
+    if (L !== this.L) { this.L = L; this.S = scaleFor(L); }
     this.frame++;
     const pt = this._pt;
     let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
@@ -97,13 +113,15 @@ export class TerrainCache {
     const cyw = v.camR * RY + ((v.camU) / SE) * FY;
     for (let i = i0; i <= i1; i++) {
       for (let j = j0; j <= j1; j++) {
-        const k = this.key(i, j);
-        const ch = this.chunks.get(k);
+        const exact = this.chunks.get(this.key(i, j));
+        const ch = exact || this._best(i, j);
         if (ch) {
           if (this._onScreen(ch)) { ch.used = this.frame; vis.push(ch); }
-        } else if (this._maybeVisible(i, j)) {
+        }
+        if (!exact && (ch ? this._onScreen(ch) : this._maybeVisible(i, j))) {
           const cx = (i + 0.5) * C, cy = (j + 0.5) * C;
-          want.push([i, j, (cx - cxw) ** 2 + (cy - cyw) ** 2]);
+          // Missing chunks first; stand-ins get upgraded after
+          want.push([i, j, (cx - cxw) ** 2 + (cy - cyw) ** 2 + (ch ? 1e7 : 0), ch]);
         }
       }
     }
@@ -115,7 +133,9 @@ export class TerrainCache {
       const ch = this._build(want[n][0], want[n][1]);
       this.chunks.set(this.key(ch.i, ch.j), ch);
       ch.used = this.frame;
-      if (this._onScreen(ch)) vis.push(ch);
+      const old = want[n][3];
+      if (old) { const k = vis.indexOf(old); if (k >= 0) vis[k] = ch; }
+      else if (this._onScreen(ch)) vis.push(ch);
       this.pending--;
     }
     vis.sort((a, b) => b.order - a.order);
@@ -125,17 +145,20 @@ export class TerrainCache {
   draw(ctx) {
     const v = this.view;
     for (const ch of this.visible) {
-      const dx = Math.round(v.W * 0.5 + (ch.rmin - v.camR) * v.S - ch.pad + v.shakeX);
-      const dy = Math.round(v.H * 0.5 - (ch.umax - v.camU) * v.S - ch.pad + v.shakeY);
-      ctx.drawImage(ch.canvas, dx, dy);
+      const r = v.S / ch.S;
+      const dx = v.W * 0.5 + (ch.rmin - v.camR) * v.S - ch.pad * r + v.shakeX;
+      const dy = v.H * 0.5 - (ch.umax - v.camU) * v.S - ch.pad * r + v.shakeY;
+      if (Math.abs(r - 1) < 1e-3) ctx.drawImage(ch.canvas, Math.round(dx), Math.round(dy));
+      else ctx.drawImage(ch.canvas, dx, dy, ch.w * r + 0.5, ch.h * r + 0.5);
     }
   }
 
   _onScreen(ch) {
     const v = this.view;
-    const x = v.W * 0.5 + (ch.rmin - v.camR) * v.S - ch.pad;
-    const y = v.H * 0.5 - (ch.umax - v.camU) * v.S - ch.pad;
-    return x < v.W && y < v.H && x + ch.w > 0 && y + ch.h > 0;
+    const r = v.S / ch.S;
+    const x = v.W * 0.5 + (ch.rmin - v.camR) * v.S - ch.pad * r;
+    const y = v.H * 0.5 - (ch.umax - v.camU) * v.S - ch.pad * r;
+    return x < v.W && y < v.H && x + ch.w * r > 0 && y + ch.h * r > 0;
   }
 
   _maybeVisible(i, j) {
@@ -163,7 +186,7 @@ export class TerrainCache {
     const drop = arr.length - MAX_CHUNKS;
     for (let k = 0; k < drop; k++) {
       if (arr[k].used === this.frame) break;
-      this.chunks.delete(this.key(arr[k].i, arr[k].j));
+      this.chunks.delete(this.key(arr[k].i, arr[k].j, arr[k].L));
     }
   }
 
@@ -210,7 +233,7 @@ export class TerrainCache {
     const canvas = makeCanvas(cw, chh);
     const ctx = canvas.getContext('2d');
     const ch = {
-      i, j, canvas, ctx, rmin, umax, pad, w: cw, h: chh, used: 0,
+      i, j, L: this.L, S, canvas, ctx, rmin, umax, pad, w: cw, h: chh, used: 0,
       order: (i + 0.5) * FX + (j + 0.5) * FY,
       x0, y0,
     };
@@ -478,16 +501,13 @@ export class TerrainCache {
     if (this.decals.length > MAX_DECALS) this.decals.splice(0, this.decals.length - MAX_DECALS);
     const i0 = Math.floor((d.x - 12) / C), i1 = Math.floor((d.x + 12) / C);
     const j0 = Math.floor((d.y - 12) / C), j1 = Math.floor((d.y + 12) / C);
-    for (let i = i0; i <= i1; i++) {
-      for (let j = j0; j <= j1; j++) {
-        const ch = this.chunks.get(this.key(i, j));
-        if (ch) this._paintDecal(ch, d);
-      }
+    for (const ch of this.chunks.values()) {
+      if (ch.i >= i0 && ch.i <= i1 && ch.j >= j0 && ch.j <= j1) this._paintDecal(ch, d);
     }
   }
 
   _paintDecal(ch, d) {
-    const ctx = ch.ctx, S = this.S;
+    const ctx = ch.ctx, S = ch.S;
     const x = ch.px(d.x, d.y), y = ch.py(d.x, d.y, d.z);
     ctx.save();
     if (d.type === 'wash') {

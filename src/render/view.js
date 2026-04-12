@@ -8,7 +8,7 @@
  */
 
 const YAW = (28 * Math.PI) / 180;
-const ELEV = (50 * Math.PI) / 180;
+const ELEV = (35 * Math.PI) / 180;
 
 export const RX = Math.cos(YAW), RY = -Math.sin(YAW);
 export const FX = Math.sin(YAW), FY = Math.cos(YAW);
@@ -17,7 +17,7 @@ export const SE = Math.sin(ELEV), CE = Math.cos(ELEV);
 // Unit vector from the scene toward the camera
 export const TO_CAM = [-FX * CE, -FY * CE, SE];
 
-export const ZOOMS = [3.5, 5, 7, 9.5, 13, 18];
+export const ZOOMS = [6, 8, 11, 15, 20, 27];
 
 export class View {
   constructor() {
@@ -25,7 +25,8 @@ export class View {
     this.H = 1;
     this.dpr = 1;
     this.zoomIdx = 3;
-    this.S = ZOOMS[this.zoomIdx];
+    this.userS = ZOOMS[this.zoomIdx];   // pilot-chosen scale (px/m, device)
+    this.S = this.userS;                // live scale, auto-framed by the game
     this.camR = 0;
     this.camU = 0;
     this.shakeX = 0;
@@ -36,12 +37,13 @@ export class View {
     this.dpr = dpr;
     this.W = Math.round(cssW * dpr);
     this.H = Math.round(cssH * dpr);
-    this.S = ZOOMS[this.zoomIdx] * dpr;
+    this.userS = ZOOMS[this.zoomIdx] * dpr;
+    this.S = this.userS;
   }
 
   setZoom(idx) {
     this.zoomIdx = Math.max(0, Math.min(ZOOMS.length - 1, idx));
-    this.S = ZOOMS[this.zoomIdx] * this.dpr;
+    this.userS = ZOOMS[this.zoomIdx] * this.dpr;
   }
 
   lookAt(x, y, z) {
