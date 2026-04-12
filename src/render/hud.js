@@ -102,49 +102,48 @@ export class Hud {
       ctx.fillText('R — reset to last pad', W / 2, H * 0.38 + 40);
       return;
     }
-    if (t.vrs > 0.3) {
-      const a = 0.55 + 0.45 * Math.min(1, t.vrs);
-      ctx.textAlign = 'center';
-      ctx.font = `bold ${38 + t.vrs * 10}px ${FONT}`;
-      ctx.fillStyle = blink ? `rgba(255,40,30,${a})` : `rgba(255,120,100,${a * 0.6})`;
-      ctx.fillText('[VRS]', W / 2, H * 0.3);
-      ctx.font = `13px ${FONT}`;
-      ctx.fillStyle = 'rgba(255,190,180,0.9)';
-      ctx.fillText('VORTEX RING STATE — FORWARD / LATERAL CYCLIC, DON\'T PULL', W / 2, H * 0.3 + 32);
-    }
+    // Warnings live in a strip just above the control widgets, clear of the heli
     if (!t.engineOn) list.push(['ENGINE OUT', '#ff3b30']);
     if (t.nr < 0.95 && t.nr > 0.02) list.push(['LOW ROTOR RPM', '#ff3b30']);
     if (t.nr > 1.07) list.push(['ROTOR OVERSPEED', '#ffb300']);
     if (t.torquePct > 1.0) list.push(['OVERTORQUE', '#ffb300']);
     if (t.stall > 0.92) list.push(['BLADE STALL', '#ffb300']);
     if (t.mastBump) list.push(['MAST BUMP', '#ff3b30']);
-    if (t.loadFactor < 0.35 && t.nr > 0.5 && h.contacts === 0 && t.hubAgl > 4) list.push(['LOW G — DON\'T ROLL', '#ffb300']);
-    if (t.vrsTr > 0.4) list.push(['TAIL ROTOR VRS / LTE', '#ffb300']);
+    if (t.loadFactor < 0.35 && t.nr > 0.5 && h.contacts === 0 && t.hubAgl > 4) list.push(['LOW G', '#ffb300']);
+    if (t.vrsTr > 0.4) list.push(['TAIL ROTOR VRS', '#ffb300']);
     if (!h.sas) list.push(['SAS OFF', '#8aa']);
+    if (t.etl > 0.6 && t.hubAgl < 60) list.push(['ETL', `rgba(140,230,140,${Math.min(1, (t.etl - 0.6) * 2.5)})`, true]);
+    if (t.ge < 0.97) list.push(['IGE', `rgba(150,200,255,${Math.min(1, (1 - t.ge) * 8)})`, true]);
+
+    const rowY = H - 136;
     ctx.textAlign = 'center';
-    ctx.font = `bold 16px ${FONT}`;
-    let y = H * 0.3 + (t.vrs > 0.3 ? 62 : 0);
-    for (const [txt, col] of list) {
-      const wd = ctx.measureText(txt).width + 18;
-      ctx.fillStyle = 'rgba(0,0,0,0.5)';
-      ctx.fillRect(W / 2 - wd / 2, y - 12, wd, 24);
+    ctx.font = `bold 13px ${FONT}`;
+    const gap = 8, padX = 10;
+    const widths = list.map(([txt]) => ctx.measureText(txt).width + padX * 2);
+    let x = W / 2 - (widths.reduce((s, v) => s + v, 0) + gap * Math.max(0, list.length - 1)) / 2;
+    list.forEach(([txt, col, soft], i) => {
+      const wd = widths[i];
+      ctx.fillStyle = soft ? 'rgba(0,0,0,0.3)' : 'rgba(0,0,0,0.6)';
+      ctx.fillRect(x, rowY - 11, wd, 22);
       ctx.fillStyle = col === '#ff3b30' && !blink ? '#a02018' : col;
-      ctx.fillText(txt, W / 2, y);
-      y += 28;
-    }
-    // Soft cues
-    ctx.font = `12px ${FONT}`;
-    if (t.etl > 0.6 && t.hubAgl < 60) {
-      ctx.fillStyle = `rgba(160,255,160,${(t.etl - 0.6) * 1.5})`;
-      ctx.fillText('ETL', W / 2 - 60, H * 0.62);
-    }
-    if (t.ge < 0.97) {
-      ctx.fillStyle = `rgba(160,210,255,${Math.min(1, (1 - t.ge) * 6)})`;
-      ctx.fillText('IN GROUND EFFECT', W / 2 + 60, H * 0.62);
+      ctx.fillText(txt, x + wd / 2, rowY);
+      x += wd + gap;
+    });
+
+    if (t.vrs > 0.3) {
+      const a = 0.55 + 0.45 * Math.min(1, t.vrs);
+      const vy = rowY - (list.length ? 34 : 6);
+      ctx.font = `bold ${24 + t.vrs * 6}px ${FONT}`;
+      ctx.fillStyle = blink ? `rgba(255,40,30,${a})` : `rgba(255,120,100,${a * 0.6})`;
+      ctx.fillText('[VRS]', W / 2, vy - 10);
+      ctx.font = `11px ${FONT}`;
+      ctx.fillStyle = 'rgba(255,190,180,0.9)';
+      ctx.fillText('VORTEX RING STATE — FORWARD / LATERAL CYCLIC, DON\'T PULL', W / 2, vy + 12);
     }
     if (g.engineHold > 0) {
+      ctx.font = `12px ${FONT}`;
       ctx.fillStyle = '#ffb300';
-      ctx.fillText(`HOLD F — ${h.engine.running ? 'CUT' : 'START'} ENGINE ${(g.engineHold * 100 / 0.6).toFixed(0)}%`, W / 2, H * 0.66);
+      ctx.fillText(`HOLD F — ${h.engine.running ? 'CUT' : 'START'} ENGINE ${(g.engineHold * 100 / 0.6).toFixed(0)}%`, W / 2, rowY + 22);
     }
   }
 

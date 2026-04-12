@@ -18,7 +18,7 @@ const PHYS_DT = 1 / 400;
 
 // Altitude the camera frames: linear up to A0, then log soft-limit so high
 // flight keeps detail (shadow may leave the screen; the AGL tag still reads).
-const A0 = 75, AK = 45;
+const A0 = 35, AK = 20;
 export function framedAltitude(agl) {
   return agl <= A0 ? agl : A0 + AK * Math.log1p((agl - A0) / AK);
 }
