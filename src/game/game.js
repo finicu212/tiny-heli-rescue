@@ -15,6 +15,17 @@ import { Input } from '../input/input.js';
 import { Mission } from './mission.js';
 
 const PHYS_DT = 1 / 400;
+
+// Altitude the camera frames: linear up to A0, then log soft-limit so high
+// flight keeps detail (shadow may leave the screen; the AGL tag still reads).
+const A0 = 75, AK = 45;
+export function framedAltitude(agl) {
+  return agl <= A0 ? agl : A0 + AK * Math.log1p((agl - A0) / AK);
+}
+/** Slight zoom-out with ground speed: ~7 % at 25 m/s, ~13 % at 50 m/s. */
+export function speedZoom(gs) {
+  return 1 / (1 + 0.003 * gs);
+}
 const MAX_FRAME = 0.1;
 
 function lsGet(k, d) { try { const v = localStorage.getItem(k); return v === null ? d : v; } catch { return d; } }
@@ -195,8 +206,10 @@ export class Game {
     const v = this.view;
     const zg = this.world.surfaceZ(h.pos[0], h.pos[1]);
     const agl = Math.max(0, h.pos[2] - zg);
-    const fitS = (0.34 * v.H) / (Math.max(1, agl) * CE);
-    const targetS = Math.max(2.4 * v.dpr, Math.min(v.userS, fitS));
+    const aFrame = framedAltitude(agl);
+    const gs = Math.hypot(h.vel[0], h.vel[1]);
+    const fitS = (0.34 * v.H) / (Math.max(1, aFrame) * CE);
+    const targetS = Math.max(2.4 * v.dpr, Math.min(v.userS, fitS) * speedZoom(gs));
     if (!this.liveS) this.liveS = targetS;
     this.liveS += (targetS - this.liveS) * (1 - Math.exp(-dt * 2.2));
     v.S = this.liveS;
@@ -204,7 +217,8 @@ export class Game {
     const lead = 0.7;
     const tx = h.pos[0] + Math.max(-leadMax, Math.min(leadMax, h.vel[0] * lead));
     const ty = h.pos[1] + Math.max(-leadMax, Math.min(leadMax, h.vel[1] * lead));
-    const tz = h.pos[2] - 0.5 * agl;              // midway between heli and its shadow
+    // Midway to the shadow while it fits; above that keep the heli ~30 % from the top
+    const tz = h.pos[2] - Math.min(0.5 * aFrame, (0.2 * v.H) / (v.S * CE));
     const k = 1 - Math.exp(-dt * 5);
     this.cam[0] += (tx - this.cam[0]) * k;
     this.cam[1] += (ty - this.cam[1]) * k;
@@ -258,7 +272,7 @@ export class Game {
       ctx.textBaseline = 'middle';
       ctx.fillStyle = 'rgba(0,0,0,0.45)';
       const label = `${Math.round((agl - 1.25) * 3.28084)} ft`;
-      const ym = (y0 + y1) / 2;
+      const ym = Math.max(y0 + 24 * v.dpr, Math.min((y0 + y1) / 2, v.H * 0.7));
       ctx.fillRect(x + 8 * v.dpr, ym - 9 * v.dpr, ctx.measureText(label).width + 8 * v.dpr, 18 * v.dpr);
       ctx.fillStyle = '#fff';
       ctx.fillText(label, x + 12 * v.dpr, ym);

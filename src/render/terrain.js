@@ -11,9 +11,10 @@ import { TER, WATER_Z } from '../world/world.js';
 import { mulberry32 } from '../world/noise.js';
 
 const C = 64;
-const CELL = 2;
-const N = C / CELL;
-const MAX_CHUNKS = 90;
+// Grid resolution per build: 2 m cells up close, 4 m when zoomed far out (4× fewer quads)
+let CELL = 2;
+let N = C / CELL;
+const MIN_CHUNKS = 90;
 // Cache scales are quantised; the view scale in between is reached by GPU-scaled blits
 const LEVEL_STEP = 1.25;
 export function levelFor(S) { return Math.round(Math.log(S) / Math.log(LEVEL_STEP)); }
@@ -49,13 +50,19 @@ function rgb(r, g, b) {
   return `rgb(${r | 0},${g | 0},${b | 0})`;
 }
 
-// Painter's order for cells: far (large x·F) first
-const CELL_ORDER = (() => {
-  const idx = [];
-  for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) idx.push([i, j, i * FX + j * FY]);
-  idx.sort((a, b) => b[2] - a[2]);
-  return idx.map((e) => e[1] * N + e[0]);
-})();
+// Painter's order for cells: far (large x·F) first, one table per grid size
+const ORDERS = new Map();
+function cellOrder(n) {
+  let o = ORDERS.get(n);
+  if (!o) {
+    const idx = [];
+    for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) idx.push([i, j, i * FX + j * FY]);
+    idx.sort((a, b) => b[2] - a[2]);
+    o = idx.map((e) => e[1] * n + e[0]);
+    ORDERS.set(n, o);
+  }
+  return o;
+}
 
 export class TerrainCache {
   constructor(world, view) {
@@ -139,7 +146,8 @@ export class TerrainCache {
       this.pending--;
     }
     vis.sort((a, b) => b.order - a.order);
-    if (this.chunks.size > MAX_CHUNKS) this._evict();
+    this.maxChunks = Math.max(MIN_CHUNKS, Math.ceil(vis.length * 1.6));
+    if (this.chunks.size > this.maxChunks) this._evict();
   }
 
   draw(ctx) {
@@ -183,7 +191,7 @@ export class TerrainCache {
 
   _evict() {
     const arr = [...this.chunks.values()].sort((a, b) => a.used - b.used);
-    const drop = arr.length - MAX_CHUNKS;
+    const drop = arr.length - this.maxChunks;
     for (let k = 0; k < drop; k++) {
       if (arr[k].used === this.frame) break;
       this.chunks.delete(this.key(arr[k].i, arr[k].j, arr[k].L));
@@ -193,6 +201,8 @@ export class TerrainCache {
   // ── chunk construction ──
   _build(i, j) {
     const w = this.world, S = this.S;
+    CELL = S < 5 ? 4 : 2;
+    N = C / CELL;
     const x0 = i * C, y0 = j * C;
     const G = N + 3; // heights with 1-cell border for normals
     const H = new Float32Array(G * G);
@@ -246,7 +256,7 @@ export class TerrainCache {
     const rnd = mulberry32(((i * 73856093) ^ (j * 19349663) ^ w.seed) >>> 0);
     const jitter = new Float32Array(N * N);
     for (let k = 0; k < N * N; k++) jitter[k] = rnd();
-    for (const k of CELL_ORDER) {
+    for (const k of cellOrder(N)) {
       const a = k % N, b = (k / N) | 0;
       const xa = x0 + a * CELL, ya = y0 + b * CELL;
       const h00 = hAt(a, b), h10 = hAt(a + 1, b), h01 = hAt(a, b + 1), h11 = hAt(a + 1, b + 1);
