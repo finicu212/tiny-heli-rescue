@@ -52,7 +52,7 @@ export class Game {
     this.renderMs = 0;
     this.dt = 0;
     this._dbgAcc = 0;
-    this.bestScore = Number(lsGet('heliborne.best', '0')) || 0;
+    this.bestScore = Number(lsGet('tinyheli.best', '0')) || 0;
     this._deliveries = 0;
     this._raf = 0;
     this.seed = seed;
@@ -172,7 +172,7 @@ export class Game {
     if (this.mission.deliveries !== this._deliveries) {
       this._deliveries = this.mission.deliveries;
       this.audio?.shot('chime');
-      if (this.mission.score > this.bestScore) { this.bestScore = this.mission.score; lsSet('heliborne.best', String(this.bestScore)); }
+      if (this.mission.score > this.bestScore) { this.bestScore = this.mission.score; lsSet('tinyheli.best', String(this.bestScore)); }
     }
     if (h.impactEvent > 0.3) {
       this.audio?.shot('thud', Math.min(1.2, h.impactEvent / 2.5));

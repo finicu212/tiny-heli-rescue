@@ -255,7 +255,7 @@ export class Hud {
     ctx.fillRect(12, 12, 280, 82);
     ctx.font = `bold 13px ${FONT}`;
     ctx.fillStyle = '#ff4020';
-    ctx.fillText('HELIBORNE', 22, 26);
+    ctx.fillText('tiny heli rescue', 22, 26);
     ctx.font = `12px ${FONT}`;
     ctx.fillStyle = '#ddd';
     ctx.fillText(`SCORE ${m.score}   STREAK ×${m.streak}   BEST ${g.bestScore}`, 22, 44);

@@ -1,6 +1,6 @@
-# HELIBORNE
+# tiny heli rescue
 
-2.5D single-rotor helicopter sim for the browser. Spun off from REDLINE (same stack, same debug-panel style). Built for Chrome on Windows, targeting a steady 144 fps or more.
+2.5D single-rotor helicopter sim for the browser. Cozy search & rescue toy built on a real flight model. Spun off from REDLINE (same stack, same debug-panel style). Built for Chrome on Windows, targeting a steady 144 fps or more.
 
 Design rule, in order: **1. accurate sim → 2. the world reacts to you ("the wall must not ignore me") → 3. 144 fps+ → 4. graphics.**
 

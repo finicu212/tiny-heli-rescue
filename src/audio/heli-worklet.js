@@ -1,6 +1,6 @@
 /* global sampleRate, registerProcessor, AudioWorkletProcessor */
 /**
- * HELIBORNE synth — runs on the audio thread, sample-accurate blade timing.
+ * tiny heli rescue synth — runs on the audio thread, sample-accurate blade timing.
  * Self-contained (no imports): loaded via audioWorklet.addModule.
  *
  * Layers: main-rotor thump + BVI slap + swish, tail-rotor buzz, turbine
